@@ -25,6 +25,8 @@
 #                                   Recrea la BD, instala y activa los plugins y lanza sus tests.
 #
 # Las carpetas /tmp/core-src y /tmp/plugins-src las rellena run-tests.sh con el código del usuario.
+#
+# @author Esteban Sánchez Martínez <esteban@factura.city>
 
 set -u
 

@@ -23,6 +23,8 @@
 # Uso:           ./run-tests.sh [opciones]       (ver ./run-tests.sh --ayuda)
 #
 # Funciona en Linux, macOS y Windows (con Git Bash o WSL). Solo necesita Docker.
+#
+# @author Esteban Sánchez Martínez <esteban@factura.city>
 
 set -u
 

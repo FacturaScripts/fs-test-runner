@@ -24,6 +24,8 @@
  *
  * Uso: php ordenar-plugins.php <carpeta_con_los_plugins> Plugin1 Plugin2 ...
  * Salida: los nombres ordenados, separados por espacios.
+ *
+ * @author Esteban Sánchez Martínez <esteban@factura.city>
  */
 
 $carpeta = rtrim($argv[1] ?? '', '/');

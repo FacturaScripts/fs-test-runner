@@ -22,6 +22,8 @@
  * Uso (desde la raíz de FacturaScripts): php /opt/scripts/habilitar-plugins.php Dependencia Plugin
  * Los plugins se activan en el orden recibido, así que las dependencias deben ir primero.
  * Código de salida: 0 si todo bien, 2 si algún plugin no se ha podido activar.
+ *
+ * @author Esteban Sánchez Martínez <esteban@factura.city>
  */
 
 use FacturaScripts\Core\Base\DataBase;

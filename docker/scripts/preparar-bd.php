@@ -23,6 +23,8 @@
  *
  * Uso (desde la raíz de FacturaScripts): php /opt/scripts/preparar-bd.php <mysql|mariadb|postgres> <nombre_bd>
  * Código de salida: 0 si todo bien, 2 si falla algo.
+ *
+ * @author Esteban Sánchez Martínez <esteban@factura.city>
  */
 
 /** @var array<string, array{tipo: string, host: string, puerto: int}> Datos de conexión de cada motor. */
