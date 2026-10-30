@@ -1,0 +1,122 @@
+# Entorno de pruebas de plugins de FacturaScripts: 5 instalaciones (PHP 8.1 a 8.5)
+# más MySQL, PostgreSQL y (opcional) MariaDB. No se publica ningún puerto en tu equipo.
+# No lo uses directamente: lo gestiona ../run-tests.sh.
+name: fs-test-runner
+
+x-php: &php
+  restart: unless-stopped
+  command: ['tail', '-f', '/dev/null']
+  depends_on:
+    mysql:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-proot']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U root -d postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # MariaDB solo arranca si se pide (run-tests.sh --db mariadb)
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    profiles: ['mariadb']
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  test81:
+    <<: *php
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.1'
+    volumes:
+      - ./scripts:/opt/scripts:ro
+      - fs_cache:/cache
+      - fs81:/var/www/html
+
+  test82:
+    <<: *php
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.2'
+    volumes:
+      - ./scripts:/opt/scripts:ro
+      - fs_cache:/cache
+      - fs82:/var/www/html
+
+  test83:
+    <<: *php
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.3'
+    volumes:
+      - ./scripts:/opt/scripts:ro
+      - fs_cache:/cache
+      - fs83:/var/www/html
+
+  test84:
+    <<: *php
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.4'
+    volumes:
+      - ./scripts:/opt/scripts:ro
+      - fs_cache:/cache
+      - fs84:/var/www/html
+
+  test85:
+    <<: *php
+    build:
+      context: .
+      args:
+        PHP_VERSION: '8.5'
+    volumes:
+      - ./scripts:/opt/scripts:ro
+      - fs_cache:/cache
+      - fs85:/var/www/html
+
+volumes:
+  fs_cache:
+  mysql_data:
+  postgres_data:
+  mariadb_data:
+  fs81:
+  fs82:
+  fs83:
+  fs84:
+  fs85:

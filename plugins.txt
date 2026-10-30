@@ -1,0 +1,11 @@
+# Rutas de tus plugins, una por línea (carpeta del plugin, la que contiene facturascripts.ini).
+# Las líneas que empiezan por # se ignoran. Puedes usar rutas de Linux, macOS o Windows:
+#
+#   /home/TuUsuario/plugins/MiPlugin
+#   /Users/TuUsuario/plugins/MiPlugin
+#   C:/Users/TuUsuario/plugins/MiPlugin
+#
+# Si tu plugin necesita otros plugins (clave "require" de su facturascripts.ini), añade también aquí
+# la ruta de esos plugins. Se instalan y activan antes. Solo se ejecutan los tests de los plugins
+# que tengan la carpeta Test/main.
+
