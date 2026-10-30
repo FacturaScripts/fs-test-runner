@@ -64,6 +64,17 @@ instalar_dependencias_core() {
     fi
 }
 
+# Devuelve la carpeta Dinamic al estado del zip del core, sin restos de ejecuciones anteriores.
+# FacturaScripts genera en Dinamic archivos de los plugins activados; si el plugin ya no está,
+# esos archivos rompen la activación del siguiente. Así cada ejecución parte de una instalación limpia.
+restaurar_dinamic() {
+    local tag="$1"
+    rm -rf /tmp/core-dinamic && mkdir -p /tmp/core-dinamic
+    unzip -q "$CACHE/core-$tag.zip" '*/Dinamic/*' -d /tmp/core-dinamic || return 1
+    rsync -a --delete /tmp/core-dinamic/*/Dinamic/ "$WEB/Dinamic/" || return 1
+    rm -rf /tmp/core-dinamic
+}
+
 # Deja el core en /var/www/html: del código local copiado a /tmp/core-src o del zip descargado.
 preparar_core() {
     mkdir -p "$WEB"
@@ -87,6 +98,8 @@ preparar_core() {
             unzip -q "$CACHE/core-$tag.zip" -d /tmp/core-zip || return 1
             cp -a /tmp/core-zip/*/. "$WEB/" && rm -rf /tmp/core-zip
             echo "$tag" > "$WEB/.fs-core"
+        else
+            restaurar_dinamic "$tag" || return 1
         fi
     fi
 
