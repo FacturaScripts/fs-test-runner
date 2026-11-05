@@ -52,18 +52,18 @@ C:\ServBay\www\facturascripts\Plugins\Alquileres
 
 Guarda el archivo. (Valen las barras `\` y las `/`.)
 
-### Paso 3. Abre un terminal en la carpeta fs-test-runner
+### Paso 3. Abre un terminal en la carpeta fs-test-runner-main
 
 Es la carpeta que contiene este README, `plugins.txt` y `run-tests.sh`. **No** es la carpeta de tu plugin.
 
-- **Windows (recomendado, Git Bash):** abre la carpeta `fs-test-runner` en el Explorador de archivos,
+- **Windows (recomendado, Git Bash):** abre la carpeta `fs-test-runner-main` en el Explorador de archivos,
   haz clic derecho en un espacio vacío y elige **Open Git Bash here** (en Windows 11, primero
   "Mostrar más opciones"). Se abre una ventana negra: ya estás en la carpeta correcta.
-- **Windows con WSL (Ubuntu):** abre la carpeta `fs-test-runner` en el Explorador, haz clic en la barra
+- **Windows con WSL (Ubuntu):** abre la carpeta `fs-test-runner-main` en el Explorador, haz clic en la barra
   de direcciones, escribe `wsl` y pulsa Intro. Antes, en Docker Desktop activa
   **Settings → Resources → WSL integration** para tu Ubuntu y pulsa *Apply & restart*.
-- **macOS / Linux:** abre la terminal y entra en la carpeta `fs-test-runner`, por ejemplo
-  `cd ~/Descargas/fs-test-runner`.
+- **macOS / Linux:** abre la terminal y entra en la carpeta `fs-test-runner-main`, por ejemplo
+  `cd ~/Descargas/fs-test-runner-main`.
 
 Para comprobar que estás en el sitio correcto, escribe `ls`: debe aparecer `run-tests.sh` en la lista.
 Entonces escribe:
@@ -151,7 +151,7 @@ hace falta tocarla.
 
 **`No such file or directory` al ejecutar `bash run-tests.sh`** — La terminal no está dentro de la carpeta
 del proyecto. Ábrela desde esa carpeta (paso 3), o entra con `cd`. En WSL, las carpetas de Windows están en
-`/mnt/c/...`; por ejemplo: `cd /mnt/c/Users/TuUsuario/Desktop/fs-test-runner`.
+`/mnt/c/...`; por ejemplo: `cd /mnt/c/Users/TuUsuario/Desktop/fs-test-runner-main`.
 
 **`no encuentro Docker` en WSL** — En Docker Desktop: Settings → Resources → WSL integration, activa tu
 Ubuntu y pulsa *Apply & restart*. Cierra y vuelve a abrir la terminal.
