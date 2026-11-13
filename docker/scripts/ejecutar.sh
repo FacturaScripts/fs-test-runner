@@ -19,7 +19,7 @@
 # Script que se ejecuta DENTRO del contenedor de pruebas (lo lanza run-tests.sh).
 #
 # Subcomandos:
-#   descargar-core [--actualizar]   Descarga la última versión estable del core (código fuente de GitHub) a la caché.
+#   descargar-core [--actualizar]   Descarga el core de la rama master de GitHub (con sus tests) a la caché.
 #   preparar-core <local|descarga>  Deja el core listo en /var/www/html (con PHPUnit instalado).
 #   probar --db <motor> --plugins "A B" --pruebas "A" [--filtro X]
 #                                   Recrea la BD, instala y activa los plugins y lanza sus tests.
@@ -36,22 +36,28 @@ WEB=/var/www/html
 CACHE=/cache
 # Repositorio de GitHub del core.
 REPO=NeoRazorX/facturascripts
+# Rama del core que se prueba (la misma que usa el CI de GitHub de los plugins).
+RAMA=master
 
-# Descarga el código fuente de la última versión estable del core a la caché compartida.
+# Descarga a la caché compartida el código fuente del último commit de la rama master del core.
+# El zip se identifica por su commit: si master no ha cambiado se reutiliza; si hay commits nuevos,
+# se descarga el nuevo y se borran los anteriores.
 descargar_core() {
     local tag
-    tag=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | php -r '$j = json_decode(stream_get_contents(STDIN), true); echo $j["tag_name"] ?? "";')
+    tag=$(curl -fsSL "https://api.github.com/repos/$REPO/commits/$RAMA" | php -r '$j = json_decode(stream_get_contents(STDIN), true); echo substr($j["sha"] ?? "", 0, 12);')
     if [ -z "$tag" ]; then
-        echo "ERROR: no se ha podido averiguar la última versión estable (¿sin conexión o límite de GitHub?)." >&2
+        echo "ERROR: no se ha podido averiguar el último commit de $RAMA (¿sin conexión o límite de GitHub?)." >&2
         return 1
     fi
 
     if [ "${1:-}" != "--actualizar" ] && [ -f "$CACHE/core-$tag.zip" ]; then
-        echo "-> Core $tag ya descargado."
+        echo "-> Core $RAMA ($tag) ya descargado."
     else
-        echo "-> Descargando FacturaScripts $tag..."
-        curl -fsSL -o "$CACHE/core-$tag.zip.tmp" "https://github.com/$REPO/archive/refs/tags/$tag.zip" || return 1
+        echo "-> Descargando FacturaScripts $RAMA ($tag)..."
+        curl -fsSL -o "$CACHE/core-$tag.zip.tmp" "https://github.com/$REPO/archive/$tag.zip" || return 1
         mv "$CACHE/core-$tag.zip.tmp" "$CACHE/core-$tag.zip"
+        # quitamos los zips de commits anteriores para que la caché no crezca
+        find "$CACHE" -maxdepth 1 -name 'core-*.zip' ! -name "core-$tag.zip" -delete
     fi
     echo "$tag" > "$CACHE/core-tag.txt"
 }

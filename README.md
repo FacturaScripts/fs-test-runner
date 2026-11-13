@@ -1,7 +1,8 @@
 # Tests de plugins de FacturaScripts con Docker
 
 Ejecuta los **tests unitarios de tus plugins** en **5 instalaciones limpias de FacturaScripts, una por
-cada versión de PHP (8.1, 8.2, 8.3, 8.4 y 8.5)** y con MySQL y PostgreSQL, igual que el CI de GitHub.
+cada versión de PHP (8.1, 8.2, 8.3, 8.4 y 8.5)** y con MySQL y PostgreSQL, igual que el CI de GitHub:
+con el core de la rama **master** de FacturaScripts.
 No instalas PHP, Composer ni bases de datos: todo va en contenedores Docker.
 
 ## Arranque rápido
@@ -119,9 +120,9 @@ bash run-tests.sh --php 8.3              # solo PHP 8.3 (rápido, para el día a
 bash run-tests.sh --php 8.1,8.5          # solo esas versiones
 bash run-tests.sh --db postgres          # solo PostgreSQL (también: mysql, mariadb)
 bash run-tests.sh --filter MiClaseTest   # solo una clase o método de test
-bash run-tests.sh --core /ruta/a/core    # usa tu propio core en vez de descargar el estable
+bash run-tests.sh --core /ruta/a/core    # usa tu propio core en vez de descargar el de master
 bash run-tests.sh --serial               # una versión de PHP detrás de otra (menos carga)
-bash run-tests.sh --update-core          # vuelve a descargar la última versión estable del core
+bash run-tests.sh --update-core          # fuerza a descargar de nuevo el core de master
 bash run-tests.sh --stop                 # detiene los contenedores
 bash run-tests.sh --reset                # lo borra todo y empieza de cero
 bash run-tests.sh --ayuda
@@ -134,8 +135,9 @@ ejecuta `bash run-tests.sh` completo.
 
 1. Comprueba que Docker está en marcha y lee `plugins.txt`.
 2. Arranca los contenedores: una instalación por versión de PHP y las bases de datos.
-3. Descarga el core estable de GitHub (una sola vez) o usa el tuyo, e instala sus dependencias con
-   Composer, incluido PHPUnit.
+3. Descarga de GitHub el core de la rama **master** (el código fuente, que incluye los tests) o usa el
+   tuyo, e instala sus dependencias con Composer, incluido PHPUnit. El core se guarda en caché y solo
+   se vuelve a descargar cuando hay commits nuevos en master.
 4. **Copia tus plugins** a cada contenedor (sin `.git` ni `node_modules`). Tus carpetas originales
    **nunca se modifican**.
 5. Para cada base de datos: crea una **vacía**, activa tus plugins (dependencias primero) y ejecuta

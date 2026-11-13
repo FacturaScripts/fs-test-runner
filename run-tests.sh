@@ -54,10 +54,10 @@ Uso: ./run-tests.sh [opciones]
 
   --php 8.3,8.4        Versiones de PHP a usar (8.1 a 8.5). Por defecto, las cinco.
   --db mysql,postgres  Bases de datos: mysql, postgres y/o mariadb. Por defecto, mysql y postgres.
-  --core RUTA          Usa tu propio core de FacturaScripts en vez de descargar la última versión estable.
+  --core RUTA          Usa tu propio core de FacturaScripts en vez de descargar el de la rama master.
   --filter Nombre      Ejecuta solo una clase o método de test (--filter de PHPUnit).
   --serial             Ejecuta las versiones de PHP una detrás de otra en vez de en paralelo.
-  --update-core        Vuelve a descargar la última versión estable del core.
+  --update-core        Fuerza a descargar de nuevo el core de master (si hay commits nuevos se descarga solo).
   --stop               Detiene los contenedores (se conservan los datos).
   --reset              Borra contenedores, volúmenes y caché (empieza de cero).
   --ayuda              Muestra esta ayuda.
