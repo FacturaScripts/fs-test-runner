@@ -21,8 +21,10 @@
 # Subcomandos:
 #   descargar-core [--actualizar]   Descarga el core de la rama master de GitHub (con sus tests) a la caché.
 #   preparar-core <local|descarga>  Deja el core listo en /var/www/html (con PHPUnit instalado).
-#   probar --db <motor> --plugins "A B" --pruebas "A" [--filtro X]
-#                                   Recrea la BD, instala y activa los plugins y lanza sus tests.
+#   probar --db <motor> --plugins "A B" --pruebas "A" [--extras "A:Carpeta:X,A"] [--filtro X]
+#                                   Recrea la BD, instala y activa los plugins y lanza los tests de
+#                                   Test/main. Después, por cada carpeta extra (Test/<Carpeta> con
+#                                   install-plugins.txt), otra pasada con solo los plugins de su lista.
 #
 # Las carpetas /tmp/core-src y /tmp/plugins-src las rellena run-tests.sh con el código del usuario.
 #
@@ -38,6 +40,8 @@ CACHE=/cache
 REPO=NeoRazorX/facturascripts
 # Rama del core que se prueba (la misma que usa el CI de GitHub de los plugins).
 RAMA=master
+# Copia de la carpeta Dinamic recién preparada, para empezar cada pasada de tests desde ella.
+DINAMIC_LIMPIO=/opt/fs-dinamic-limpio
 
 # Descarga a la caché compartida el código fuente del último commit de la rama master del core.
 # El zip se identifica por su commit: si master no ha cambiado se reutiliza; si hay commits nuevos,
@@ -110,17 +114,84 @@ preparar_core() {
     fi
 
     mkdir -p "$WEB/MyFiles" "$WEB/Plugins"
-    instalar_dependencias_core
+    instalar_dependencias_core || return 1
+
+    # guardamos la carpeta Dinamic recién preparada para empezar cada pasada de tests desde ella
+    mkdir -p "$DINAMIC_LIMPIO"
+    rsync -a --delete "$WEB/Dinamic/" "$DINAMIC_LIMPIO/"
 }
 
-# Recrea la BD, copia y activa los plugins y ejecuta sus tests. Devuelve 0 si todo ha ido bien.
+# Devuelve Dinamic al estado guardado al preparar el core. Entre pasadas cambian los plugins activos
+# y los archivos que genera un plugin que ya no está romperían la activación de los siguientes.
+limpiar_dinamic() {
+    [ -d "$DINAMIC_LIMPIO" ] || return 0
+    rsync -a --delete "$DINAMIC_LIMPIO/" "$WEB/Dinamic/"
+}
+
+# Ejecuta una pasada de tests: Dinamic limpio, solo los plugins indicados (con sus dependencias de
+# Composer), base de datos vacía, plugins activados en orden y PHPUnit sobre cada carpeta de tests.
+# $1 motor, $2 nombre de la BD, $3 plugins a instalar ("A B"), $4 filtro de PHPUnit (o vacío),
+# resto: pares "Etiqueta=ruta/de/tests". Devuelve 0 si todo pasa, 1 si algún test falla y 2 si no
+# se han podido instalar o activar los plugins.
+pasada() {
+    local motor="$1" nombre_bd="$2" plugins="$3" filtro="$4"
+    shift 4
+
+    limpiar_dinamic || return 2
+
+    # plugins: solo los de esta pasada, con sus dependencias de Composer
+    find Plugins -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    local p
+    for p in $plugins; do
+        rsync -a "/tmp/plugins-src/$p/" "Plugins/$p/" || return 2
+        if [ -f "Plugins/$p/composer.json" ] && [ ! -d "Plugins/$p/vendor" ]; then
+            echo "-> composer install de $p..."
+            (cd "Plugins/$p" && composer install --no-dev --prefer-dist --no-interaction --no-progress) || return 2
+        fi
+    done
+
+    # base de datos vacía y estado de la aplicación limpio
+    php /opt/scripts/preparar-bd.php "$motor" "$nombre_bd" || return 2
+    find MyFiles -mindepth 1 ! -name .gitignore -exec rm -rf {} + 2>/dev/null
+
+    # activamos las dependencias y los plugins, en orden
+    local orden
+    orden=$(php /opt/scripts/ordenar-plugins.php /tmp/plugins-src $plugins) || return 2
+    # shellcheck disable=SC2086
+    php /opt/scripts/habilitar-plugins.php $orden || {
+        echo "ERROR: no se han podido activar los plugins."
+        return 2
+    }
+
+    # tests de cada carpeta pedida
+    local codigo=0 par etiqueta ruta salida resumen c args
+    for par in "$@"; do
+        etiqueta="${par%%=*}"
+        ruta="${par#*=}"
+        echo "=== Tests de $etiqueta ==="
+        args=(-c phpunit-plugins.xml)
+        [ -n "$filtro" ] && args+=(--filter "$filtro")
+        salida=$(php vendor/bin/phpunit "${args[@]}" "$ruta" 2>&1)
+        c=$?
+        echo "$salida"
+        [ $c -ne 0 ] && codigo=1
+        resumen=$(echo "$salida" | grep -E '^(OK \(|Tests: |No tests executed)' | tail -n 1)
+        echo "RESUMEN[$etiqueta]: ${resumen:-sin resumen de PHPUnit}"
+    done
+    return $codigo
+}
+
+# Ejecuta los tests de una base de datos: primero Test/main de los plugins pedidos (con todos los
+# plugins de plugins.txt activados) y después, por cada carpeta extra, una pasada aparte con solo
+# los plugins de su install-plugins.txt. Devuelve 0 si todo ha ido bien.
 probar() {
-    local motor="" plugins="" pruebas="" filtro=""
+    local motor="" plugins="" pruebas="" extras="" filtro=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --db) motor="$2"; shift 2 ;;
             --plugins) plugins="$2"; shift 2 ;;
             --pruebas) pruebas="$2"; shift 2 ;;
+            --extras) extras="$2"; shift 2 ;;
             --filtro) filtro="$2"; shift 2 ;;
             *) shift ;;
         esac
@@ -130,42 +201,30 @@ probar() {
     local nombre_bd
     nombre_bd="test$(php -r 'echo PHP_MAJOR_VERSION . PHP_MINOR_VERSION;')"
 
-    # plugins: solo los de esta ejecución, con sus dependencias de Composer
-    find Plugins -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    local p
-    for p in $plugins; do
-        rsync -a "/tmp/plugins-src/$p/" "Plugins/$p/" || return 1
-        if [ -f "Plugins/$p/composer.json" ] && [ ! -d "Plugins/$p/vendor" ]; then
-            echo "-> composer install de $p..."
-            (cd "Plugins/$p" && composer install --no-dev --prefer-dist --no-interaction --no-progress) || return 1
-        fi
-    done
+    local codigo=0 c p carpetas=()
 
-    # base de datos vacía y estado de la aplicación limpio
-    php /opt/scripts/preparar-bd.php "$motor" "$nombre_bd" || return 1
-    find MyFiles -mindepth 1 ! -name .gitignore -exec rm -rf {} + 2>/dev/null
-
-    # activamos las dependencias y los plugins, en orden
-    local orden
-    orden=$(php /opt/scripts/ordenar-plugins.php /tmp/plugins-src $plugins) || return 1
-    # shellcheck disable=SC2086
-    php /opt/scripts/habilitar-plugins.php $orden || {
-        echo "ERROR: no se han podido activar los plugins."
-        return 1
-    }
-
-    # tests de cada plugin pedido
-    local codigo=0 salida resumen c args
-    for p in $pruebas; do
-        echo "=== Tests de $p ==="
-        args=(-c phpunit-plugins.xml)
-        [ -n "$filtro" ] && args+=(--filter "$filtro")
-        salida=$(php vendor/bin/phpunit "${args[@]}" "Plugins/$p/Test/main" 2>&1)
+    # pasada principal: Test/main de cada plugin con tests
+    if [ -n "$pruebas" ]; then
+        for p in $pruebas; do
+            carpetas+=("$p=Plugins/$p/Test/main")
+        done
+        pasada "$motor" "$nombre_bd" "$plugins" "$filtro" "${carpetas[@]}"
         c=$?
-        echo "$salida"
-        [ $c -ne 0 ] && codigo=$c
-        resumen=$(echo "$salida" | grep -E '^(OK \(|Tests: |No tests executed)' | tail -n 1)
-        echo "RESUMEN[$p]: ${resumen:-sin resumen de PHPUnit}"
+        # si no se activan los plugins principales no tiene sentido seguir
+        [ $c -eq 2 ] && return 1
+        [ $c -ne 0 ] && codigo=1
+    fi
+
+    # pasadas extra: Test/<Carpeta> con solo los plugins de su install-plugins.txt
+    local extra plugin carpeta lista
+    for extra in $extras; do
+        IFS=: read -r plugin carpeta lista <<< "$extra"
+        pasada "$motor" "$nombre_bd" "${lista//,/ }" "$filtro" "$plugin/$carpeta=Plugins/$plugin/Test/$carpeta"
+        c=$?
+        if [ $c -eq 2 ]; then
+            echo "RESUMEN[$plugin/$carpeta]: ERROR: no se han podido instalar o activar los plugins ${lista//,/, } (ver log)"
+        fi
+        [ $c -ne 0 ] && codigo=1
     done
     return $codigo
 }

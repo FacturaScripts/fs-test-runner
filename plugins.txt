@@ -7,5 +7,5 @@
 #
 # Si tu plugin necesita otros plugins (clave "require" de su facturascripts.ini), añade también aquí
 # la ruta de esos plugins. Se instalan y activan antes. Solo se ejecutan los tests de los plugins
-# que tengan la carpeta Test/main.
+# que tengan la carpeta Test/main y, aparte, sus carpetas Test/<Otra> con install-plugins.txt.
 

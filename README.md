@@ -90,6 +90,12 @@ Escribe la ruta de la carpeta de cada plugin (la que contiene `facturascripts.in
   rutas: se instalan y activan antes que el tuyo.
 - Tus tests deben estar en la carpeta **`Test/main`** del plugin, como en el CI de los plugins de
   FacturaScripts. Un plugin sin esa carpeta se instala, pero no se prueba.
+- **Tests con otros plugins** (por ejemplo, la integración con un plugin compatible): ponlos en otra
+  carpeta, como `Test/TarifasAvanzadas`, con un archivo `install-plugins.txt` que diga qué plugins
+  activar, separados por comas y en orden (`TarifasAvanzadas,MiPlugin`). Cada una de esas carpetas
+  se prueba aparte, con una base de datos nueva y solo esos plugins. Los plugins de la lista que no
+  estén en `plugins.txt` se buscan en la misma carpeta que el tuyo; si los tienes en otro sitio,
+  añade su ruta a `plugins.txt`.
 - Las líneas que empiezan por `#` son comentarios.
 
 ## 2. Leer el resultado
@@ -109,6 +115,10 @@ Combinaciones correctas: 9 de 10. Logs en: .../fs-test-runner/logs
 | `FALLO` | Algún test falla. Mira el log para ver cuál. |
 | `ERROR` | Ni siquiera se han podido ejecutar (no se activa el plugin, falla Composer...). Mira el log. |
 | `SIN-TEST` | PHPUnit no ha encontrado ningún test (por ejemplo, un `--filter` que no coincide). |
+
+Si hay varias carpetas de tests (varios plugins, o `Test/main` y otras carpetas como
+`Test/TarifasAvanzadas`), el resumen las muestra todas, por ejemplo:
+`MiPlugin: OK (22 tests, 270 assertions); MiPlugin/TarifasAvanzadas: OK (4 tests, 57 assertions)`.
 
 Los **logs completos** están en la carpeta `logs/` (por ejemplo `logs/php8.3_mysql.log`). El código de
 salida es `0` solo si todo está en `OK`, así que también sirve en integración continua.
@@ -142,7 +152,10 @@ ejecuta `bash run-tests.sh` completo.
    **nunca se modifican**.
 5. Para cada base de datos: crea una **vacía**, activa tus plugins (dependencias primero) y ejecuta
    PHPUnit sobre `Plugins/<TuPlugin>/Test/main`.
-6. Muestra la tabla de resultados.
+6. Después, por cada carpeta de tests con `install-plugins.txt` (por ejemplo `Test/TarifasAvanzadas`),
+   repite el paso anterior con una base de datos **vacía** y activando **solo** los plugins de ese
+   archivo. Así los tests de `Test/main` nunca se ejecutan con esos plugins activados.
+7. Muestra la tabla de resultados.
 
 Las versiones de PHP van en paralelo; las bases de datos de una misma versión, una tras otra. Las bases
 de datos solo son accesibles desde los contenedores (no se publica ningún puerto), así que no chocan
@@ -178,6 +191,9 @@ copiar la carpeta con `git config --global core.autocrlf input` activado.
 
 **`ningún plugin de plugins.txt tiene la carpeta Test/main`** — Tus tests deben estar en `Test/main`
 dentro del plugin.
+
+**`Test/X de MiPlugin necesita el plugin Y`** — El `install-plugins.txt` de esa carpeta pide un plugin
+que no está en `plugins.txt` ni en la misma carpeta que el tuyo. Añade su ruta a `plugins.txt`.
 
 **`no se ha podido descargar el core`** — Sin internet, o GitHub ha limitado las peticiones: espera unos
 minutos y reintenta, o usa tu propio core con `--core`.

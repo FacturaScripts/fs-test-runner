@@ -154,7 +154,35 @@ while IFS= read -r linea || [ -n "$linea" ]; do
 done < plugins.txt
 
 [ ${#RUTAS[@]} -gt 0 ] || fallar "plugins.txt no tiene ninguna ruta. Añade la carpeta de tu plugin (mira el README)."
-[ ${#PRUEBAS[@]} -gt 0 ] || fallar "ningún plugin de plugins.txt tiene la carpeta Test/main con tests."
+
+# Carpetas de tests adicionales: Test/<Carpeta> con un install-plugins.txt (lista de plugins separados
+# por comas, en orden de activación), como las que usa el CI de los plugins con plugins compatibles.
+# Cada una se prueba en una pasada aparte, con solo los plugins de su lista. Los plugins de la lista
+# que no estén en plugins.txt se buscan en la misma carpeta que el plugin (sus "hermanos") y solo se
+# usan en esa pasada.
+EXTRAS=()
+EXTRA_RUTAS=()
+EXTRA_NOMBRES=()
+for i in "${!RUTAS[@]}"; do
+    for carpeta in "${RUTAS[$i]}"/Test/*/; do
+        [ -f "${carpeta}install-plugins.txt" ] || continue
+        nombre_carpeta="$(basename "$carpeta")"
+        [ "$nombre_carpeta" = "main" ] && continue
+        lista="$(tr -d ' \t\r\n' < "${carpeta}install-plugins.txt")"
+        [ -n "$lista" ] || continue
+        for dep in ${lista//,/ }; do
+            case " ${NOMBRES[*]} ${EXTRA_NOMBRES[*]-} " in *" $dep "*) continue ;; esac
+            hermano="$(dirname "${RUTAS[$i]}")/$dep"
+            [ -f "$hermano/facturascripts.ini" ] \
+                || fallar "Test/$nombre_carpeta de ${NOMBRES[$i]} necesita el plugin $dep: añade su ruta a plugins.txt o ponlo en la misma carpeta que ${NOMBRES[$i]}."
+            EXTRA_RUTAS+=("$hermano")
+            EXTRA_NOMBRES+=("$dep")
+        done
+        EXTRAS+=("${NOMBRES[$i]}:$nombre_carpeta:$lista")
+    done
+done
+
+[ ${#PRUEBAS[@]} -gt 0 ] || [ ${#EXTRAS[@]} -gt 0 ] || fallar "ningún plugin de plugins.txt tiene la carpeta Test/main con tests."
 
 if [ -n "$FS_CORE" ]; then
     FS_CORE="$(normalizar_ruta "$FS_CORE")"
@@ -163,8 +191,13 @@ fi
 
 PLUGINS_TXT="${NOMBRES[*]}"
 PRUEBAS_TXT="${PRUEBAS[*]}"
+EXTRAS_TXT="${EXTRAS[*]-}"
 echo "Plugins: $PLUGINS_TXT"
 echo "Con tests: $PRUEBAS_TXT"
+for extra in ${EXTRAS[@]+"${EXTRAS[@]}"}; do
+    IFS=: read -r e_plugin e_carpeta e_lista <<< "$extra"
+    echo "Tests extra: $e_plugin/Test/$e_carpeta (con ${e_lista//,/, })"
+done
 echo "PHP: $PHP_VERSIONS | BD: $DATABASES"
 
 # --- entorno Docker -------------------------------------------------------------------------------
@@ -215,6 +248,10 @@ preparar_version() {
     for i in "${!RUTAS[@]}"; do
         copiar "$svc" "${RUTAS[$i]}" "/tmp/plugins-src/${NOMBRES[$i]}" || return 1
     done
+    # plugins que solo necesitan las carpetas de tests extra
+    for i in ${EXTRA_RUTAS[@]+"${!EXTRA_RUTAS[@]}"}; do
+        copiar "$svc" "${EXTRA_RUTAS[$i]}" "/tmp/plugins-src/${EXTRA_NOMBRES[$i]}" || return 1
+    done
     if [ -n "$FS_CORE" ]; then
         copiar "$svc" "$FS_CORE" /tmp/core-src --exclude=./vendor --exclude=./Plugins --exclude=./MyFiles --exclude=./config.php || return 1
         dc exec -T "$svc" bash /opt/scripts/ejecutar.sh preparar-core local </dev/null || return 1
@@ -249,14 +286,15 @@ probar_version() {
         local extra=()
         [ -n "$FILTRO" ] && extra=(--filtro "$FILTRO")
         dc exec -T "$svc" bash /opt/scripts/ejecutar.sh probar --db "$db" --plugins "$PLUGINS_TXT" --pruebas "$PRUEBAS_TXT" \
-            ${extra[@]+"${extra[@]}"} </dev/null > "$log" 2>&1
+            --extras "$EXTRAS_TXT" ${extra[@]+"${extra[@]}"} </dev/null > "$log" 2>&1
         codigo=$?
 
         resumen="$(grep '^RESUMEN\[' "$log" | sed -E 's/^RESUMEN\[([^]]*)\]: /\1: /' | paste -sd ';' - | sed 's/;/; /g')"
-        if [ ${#PRUEBAS[@]} -eq 1 ]; then
+        # con una sola carpeta de tests no hace falta decir de cuál es el resumen
+        if [ "$(grep -c '^RESUMEN\[' "$log")" -eq 1 ]; then
             resumen="${resumen#*: }"
         fi
-        if [ $codigo -eq 0 ] && echo "$resumen" | grep -q 'No tests executed'; then
+        if [ $codigo -eq 0 ] && grep -q '^RESUMEN\[' "$log" && ! grep '^RESUMEN\[' "$log" | grep -qv 'No tests executed'; then
             # PHPUnit sale con 0 aunque no encuentre tests (p. ej. un --filter que no coincide con nada)
             estado="SIN-TEST"
         elif [ $codigo -eq 0 ]; then
