@@ -145,6 +145,8 @@ ejecuta `bash run-tests.sh` completo.
 **Tests del core.** Si trabajas en el propio core de FacturaScripts, `--test-core` ejecuta su suite de
 tests (`phpunit.xml`) en todas las combinaciones, sin plugins y sin mirar `plugins.txt`. Con
 `--core /ruta/a/tu/core` prueba tu copia, con tus cambios; sin esa opción, la rama master de GitHub.
+Con `--core` no se copia la carpeta `Dinamic` de tu copia (lleva clases de los plugins de tu instalación):
+FacturaScripts la reconstruye en Docker al iniciarse, con los plugins que se prueban.
 También admite `--php`, `--db`, `--filter` y `--serial`.
 
 ## Qué hace por dentro

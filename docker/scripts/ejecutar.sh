@@ -93,9 +93,12 @@ restaurar_dinamic() {
 preparar_core() {
     mkdir -p "$WEB"
     if [ "${1:-}" = "local" ]; then
-        # sincronizamos sin tocar lo propio de esta instalación (dependencias, plugins, datos y config)
+        # sincronizamos sin tocar lo propio de esta instalación (dependencias, plugins, datos y config);
+        # Dinamic no viene del equipo (no se copia): se borra y FacturaScripts lo reconstruye al iniciarse
+        # con los plugins que se prueban
         rsync -a --delete --exclude=/vendor --exclude=/node_modules --exclude=/Plugins --exclude=/MyFiles \
             --exclude=/config.php --exclude=/.fs-core /tmp/core-src/ "$WEB/" || return 1
+        rm -rf "$WEB/Dinamic" && mkdir -p "$WEB/Dinamic"
         echo "local" > "$WEB/.fs-core"
     else
         local tag
@@ -190,6 +193,15 @@ pasada() {
     return $codigo
 }
 
+# Deja la copia de trabajo sin restos al acabar: sin plugins, sin datos en MyFiles y con Dinamic
+# como al preparar el core. La limpieza al empezar cada pasada se mantiene por si una ejecución se
+# corta a medias.
+limpiar_al_terminar() {
+    find Plugins -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null
+    find MyFiles -mindepth 1 ! -name .gitignore -exec rm -rf {} + 2>/dev/null
+    limpiar_dinamic
+}
+
 # Ejecuta los tests de una base de datos: primero Test/main de los plugins pedidos (con todos los
 # plugins de plugins.txt activados) y después, por cada carpeta extra, una pasada aparte con solo
 # los plugins de su install-plugins.txt. Devuelve 0 si todo ha ido bien.
@@ -224,6 +236,7 @@ probar() {
     if [ "$core_tests" -eq 1 ]; then
         pasada "$motor" "$nombre_bd" "" "$filtro" "Core=@core"
         c=$?
+        limpiar_al_terminar
         [ $c -eq 2 ] && return 1
         return $c
     fi
@@ -236,7 +249,10 @@ probar() {
         pasada "$motor" "$nombre_bd" "$plugins" "$filtro" "${carpetas[@]}"
         c=$?
         # si no se activan los plugins principales no tiene sentido seguir
-        [ $c -eq 2 ] && return 1
+        if [ $c -eq 2 ]; then
+            limpiar_al_terminar
+            return 1
+        fi
         [ $c -ne 0 ] && codigo=1
     fi
 
@@ -251,6 +267,7 @@ probar() {
         fi
         [ $c -ne 0 ] && codigo=1
     done
+    limpiar_al_terminar
     return $codigo
 }
 

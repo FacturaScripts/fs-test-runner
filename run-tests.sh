@@ -267,7 +267,9 @@ preparar_version() {
         copiar "$svc" "${EXTRA_RUTAS[$i]}" "/tmp/plugins-src/${EXTRA_NOMBRES[$i]}" || return 1
     done
     if [ -n "$FS_CORE" ]; then
-        copiar "$svc" "$FS_CORE" /tmp/core-src --exclude=./vendor --exclude=./Plugins --exclude=./MyFiles --exclude=./config.php || return 1
+        # Dinamic no se copia: el del equipo lleva clases de los plugins de esa instalación.
+        # FacturaScripts lo reconstruye en el contenedor al iniciarse (preparar-core local lo borra).
+        copiar "$svc" "$FS_CORE" /tmp/core-src --exclude=./vendor --exclude=./Plugins --exclude=./MyFiles --exclude=./Dinamic --exclude=./config.php || return 1
         dc exec -T "$svc" bash /opt/scripts/ejecutar.sh preparar-core local </dev/null || return 1
     else
         dc exec -T "$svc" bash /opt/scripts/ejecutar.sh preparar-core descarga </dev/null || return 1
