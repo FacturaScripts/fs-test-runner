@@ -131,7 +131,8 @@ bash run-tests.sh --php 8.1,8.5          # solo esas versiones
 bash run-tests.sh --db postgres          # solo PostgreSQL (también: mysql, mariadb)
 bash run-tests.sh --filter MiClaseTest   # solo una clase o método de test
 bash run-tests.sh --core /ruta/a/core    # usa tu propio core en vez de descargar el de master
-bash run-tests.sh --test-core --core /ruta/a/core   # tests del propio core (ignora plugins.txt)
+bash run-tests.sh --test-core            # tests del core de master (ignora plugins.txt)
+bash run-tests.sh --test-core --core /ruta/a/core   # tests de tu propio core (ignora plugins.txt)
 bash run-tests.sh --serial               # una combinación detrás de otra (menos carga)
 bash run-tests.sh --update-core          # fuerza a descargar de nuevo el core de master
 bash run-tests.sh --stop                 # detiene los contenedores
@@ -142,12 +143,41 @@ bash run-tests.sh --ayuda
 Consejo: mientras desarrollas usa `--php 8.3 --db mysql` (unos 25 segundos) y antes de publicar
 ejecuta `bash run-tests.sh` completo.
 
-**Tests del core.** Si trabajas en el propio core de FacturaScripts, `--test-core` ejecuta su suite de
-tests (`phpunit.xml`) en todas las combinaciones, sin plugins y sin mirar `plugins.txt`. Con
-`--core /ruta/a/tu/core` prueba tu copia, con tus cambios; sin esa opción, la rama master de GitHub.
+## 4. Probar el core
+
+Si trabajas en el propio core de FacturaScripts, `--test-core` ejecuta su suite de tests
+(`phpunit.xml`) en las 5 versiones de PHP con MySQL y PostgreSQL, sin plugins. `plugins.txt` no se usa.
+
+**El core de la rama master de GitHub** (no necesitas tener el core en tu equipo):
+
+```bash
+bash run-tests.sh --test-core
+```
+
+**Tu propia copia del core, con tus cambios.** Indica con `--core` la carpeta del core, la que contiene
+`Core/` y `composer.json`:
+
+```bash
+bash run-tests.sh --test-core --core C:/Users/TuUsuario/facturascripts
+```
+
+Admite también `--php`, `--db`, `--filter` y `--serial`. Por ejemplo, para comprobar solo una clase de
+test mientras desarrollas:
+
+```bash
+bash run-tests.sh --test-core --core C:/Users/TuUsuario/facturascripts --php 8.3 --db mysql --filter ExportBaseTest
+```
+
+**Tus plugins con tu copia del core.** Sin `--test-core`, `--core` sirve para probar los plugins de
+`plugins.txt` con tu core en lugar del de master:
+
+```bash
+bash run-tests.sh --core C:/Users/TuUsuario/facturascripts
+```
+
 Con `--core` no se copia la carpeta `Dinamic` de tu copia (lleva clases de los plugins de tu instalación):
-FacturaScripts la reconstruye en Docker al iniciarse, con los plugins que se prueban.
-También admite `--php`, `--db`, `--filter` y `--serial`.
+FacturaScripts la reconstruye en Docker al iniciarse, con los plugins que se prueban. Tampoco se copian
+`vendor`, `Plugins`, `MyFiles` ni `config.php`: el contenedor usa los suyos.
 
 ## Qué hace por dentro
 
