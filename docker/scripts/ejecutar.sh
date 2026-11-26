@@ -21,10 +21,12 @@
 # Subcomandos:
 #   descargar-core [--actualizar]   Descarga el core de la rama master de GitHub (con sus tests) a la caché.
 #   preparar-core <local|descarga>  Deja el core listo en /var/www/html (con PHPUnit instalado).
-#   probar --db <motor> --plugins "A B" --pruebas "A" [--extras "A:Carpeta:X,A"] [--filtro X]
-#                                   Recrea la BD, instala y activa los plugins y lanza los tests de
+#   probar --db <motor> --plugins "A B" --pruebas "A" [--extras "A:Carpeta:X,A"] [--filtro X] [--core-tests]
+#                                   En una copia de trabajo propia del motor (/opt/fs-run/<motor>),
+#                                   recrea la BD, instala y activa los plugins y lanza los tests de
 #                                   Test/main. Después, por cada carpeta extra (Test/<Carpeta> con
 #                                   install-plugins.txt), otra pasada con solo los plugins de su lista.
+#                                   Con --core-tests ejecuta la suite del propio core, sin plugins.
 #
 # Las carpetas /tmp/core-src y /tmp/plugins-src las rellena run-tests.sh con el código del usuario.
 #
@@ -42,6 +44,8 @@ REPO=NeoRazorX/facturascripts
 RAMA=master
 # Copia de la carpeta Dinamic recién preparada, para empezar cada pasada de tests desde ella.
 DINAMIC_LIMPIO=/opt/fs-dinamic-limpio
+# Carpeta con una copia de trabajo del core por base de datos (los motores se prueban a la vez).
+RUN=/opt/fs-run
 
 # Descarga a la caché compartida el código fuente del último commit de la rama master del core.
 # El zip se identifica por su commit: si master no ha cambiado se reutiliza; si hay commits nuevos,
@@ -125,7 +129,7 @@ preparar_core() {
 # y los archivos que genera un plugin que ya no está romperían la activación de los siguientes.
 limpiar_dinamic() {
     [ -d "$DINAMIC_LIMPIO" ] || return 0
-    rsync -a --delete "$DINAMIC_LIMPIO/" "$WEB/Dinamic/"
+    rsync -a --delete "$DINAMIC_LIMPIO/" "$PWD/Dinamic/"
 }
 
 # Ejecuta una pasada de tests: Dinamic limpio, solo los plugins indicados (con sus dependencias de
@@ -169,9 +173,14 @@ pasada() {
         etiqueta="${par%%=*}"
         ruta="${par#*=}"
         echo "=== Tests de $etiqueta ==="
-        args=(-c phpunit-plugins.xml)
+        # "@core" es la suite del propio core (phpunit.xml); lo demás, una carpeta de tests de plugin
+        if [ "$ruta" = "@core" ]; then
+            args=(-c phpunit.xml)
+        else
+            args=(-c phpunit-plugins.xml "$ruta")
+        fi
         [ -n "$filtro" ] && args+=(--filter "$filtro")
-        salida=$(php vendor/bin/phpunit "${args[@]}" "$ruta" 2>&1)
+        salida=$(php vendor/bin/phpunit "${args[@]}" 2>&1)
         c=$?
         echo "$salida"
         [ $c -ne 0 ] && codigo=1
@@ -185,9 +194,10 @@ pasada() {
 # plugins de plugins.txt activados) y después, por cada carpeta extra, una pasada aparte con solo
 # los plugins de su install-plugins.txt. Devuelve 0 si todo ha ido bien.
 probar() {
-    local motor="" plugins="" pruebas="" extras="" filtro=""
+    local motor="" plugins="" pruebas="" extras="" filtro="" core_tests=0
     while [ $# -gt 0 ]; do
         case "$1" in
+            --core-tests) core_tests=1; shift ;;
             --db) motor="$2"; shift 2 ;;
             --plugins) plugins="$2"; shift 2 ;;
             --pruebas) pruebas="$2"; shift 2 ;;
@@ -197,11 +207,26 @@ probar() {
         esac
     done
 
-    cd "$WEB" || return 1
+    # copia de trabajo propia de esta base de datos, para poder probar todos los motores a la vez
+    # en la misma versión de PHP (rsync solo copia lo que ha cambiado desde la vez anterior)
+    local dir="$RUN/$motor"
+    mkdir -p "$dir"
+    rsync -a --delete --exclude=/Plugins/ --exclude=/MyFiles/ --exclude=/config.php "$WEB/" "$dir/" || return 1
+    mkdir -p "$dir/Plugins" "$dir/MyFiles"
+    cd "$dir" || return 1
+
     local nombre_bd
     nombre_bd="test$(php -r 'echo PHP_MAJOR_VERSION . PHP_MINOR_VERSION;')"
 
     local codigo=0 c p carpetas=()
+
+    # tests del propio core: una sola pasada sin plugins
+    if [ "$core_tests" -eq 1 ]; then
+        pasada "$motor" "$nombre_bd" "" "$filtro" "Core=@core"
+        c=$?
+        [ $c -eq 2 ] && return 1
+        return $c
+    fi
 
     # pasada principal: Test/main de cada plugin con tests
     if [ -n "$pruebas" ]; then

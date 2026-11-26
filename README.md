@@ -131,7 +131,8 @@ bash run-tests.sh --php 8.1,8.5          # solo esas versiones
 bash run-tests.sh --db postgres          # solo PostgreSQL (también: mysql, mariadb)
 bash run-tests.sh --filter MiClaseTest   # solo una clase o método de test
 bash run-tests.sh --core /ruta/a/core    # usa tu propio core en vez de descargar el de master
-bash run-tests.sh --serial               # una versión de PHP detrás de otra (menos carga)
+bash run-tests.sh --test-core --core /ruta/a/core   # tests del propio core (ignora plugins.txt)
+bash run-tests.sh --serial               # una combinación detrás de otra (menos carga)
 bash run-tests.sh --update-core          # fuerza a descargar de nuevo el core de master
 bash run-tests.sh --stop                 # detiene los contenedores
 bash run-tests.sh --reset                # lo borra todo y empieza de cero
@@ -140,6 +141,11 @@ bash run-tests.sh --ayuda
 
 Consejo: mientras desarrollas usa `--php 8.3 --db mysql` (unos 25 segundos) y antes de publicar
 ejecuta `bash run-tests.sh` completo.
+
+**Tests del core.** Si trabajas en el propio core de FacturaScripts, `--test-core` ejecuta su suite de
+tests (`phpunit.xml`) en todas las combinaciones, sin plugins y sin mirar `plugins.txt`. Con
+`--core /ruta/a/tu/core` prueba tu copia, con tus cambios; sin esa opción, la rama master de GitHub.
+También admite `--php`, `--db`, `--filter` y `--serial`.
 
 ## Qué hace por dentro
 
@@ -157,7 +163,8 @@ ejecuta `bash run-tests.sh` completo.
    archivo. Así los tests de `Test/main` nunca se ejecutan con esos plugins activados.
 7. Muestra la tabla de resultados.
 
-Las versiones de PHP van en paralelo; las bases de datos de una misma versión, una tras otra. Las bases
+Todas las combinaciones de versión de PHP y base de datos van a la vez, como en el CI de GitHub: cada
+base de datos usa su propia copia de trabajo del core dentro del contenedor. Las bases
 de datos solo son accesibles desde los contenedores (no se publica ningún puerto), así que no chocan
 con tu MySQL local. La carpeta `docker/` es la maquinaria (imagen, compose y scripts internos): no
 hace falta tocarla.

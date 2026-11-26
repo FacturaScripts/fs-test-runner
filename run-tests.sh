@@ -42,6 +42,7 @@ PHP_VERSIONS="8.1 8.2 8.3 8.4 8.5"
 DATABASES="mysql postgres"
 
 FILTRO=""
+TEST_CORE=0
 SERIE=0
 ACTUALIZAR_CORE=0
 ACCION="probar"
@@ -56,7 +57,9 @@ Uso: ./run-tests.sh [opciones]
   --db mysql,postgres  Bases de datos: mysql, postgres y/o mariadb. Por defecto, mysql y postgres.
   --core RUTA          Usa tu propio core de FacturaScripts en vez de descargar el de la rama master.
   --filter Nombre      Ejecuta solo una clase o método de test (--filter de PHPUnit).
-  --serial             Ejecuta las versiones de PHP una detrás de otra en vez de en paralelo.
+  --test-core          Ejecuta los tests del propio core (sin plugins; ignora plugins.txt).
+                       Con --core RUTA prueba tu core local; si no, el de la rama master.
+  --serial             Ejecuta las versiones de PHP y las bases de datos una detrás de otra en vez de a la vez.
   --update-core        Fuerza a descargar de nuevo el core de master (si hay commits nuevos se descarga solo).
   --stop               Detiene los contenedores (se conservan los datos).
   --reset              Borra contenedores, volúmenes y caché (empieza de cero).
@@ -89,6 +92,7 @@ while [ $# -gt 0 ]; do
         --db) [ $# -ge 2 ] || fallar "--db necesita un valor"; DATABASES="${2//,/ }"; shift 2 ;;
         --core) [ $# -ge 2 ] || fallar "--core necesita un valor"; FS_CORE="$2"; shift 2 ;;
         --filter) [ $# -ge 2 ] || fallar "--filter necesita un valor"; FILTRO="$2"; shift 2 ;;
+        --test-core) TEST_CORE=1; shift ;;
         --serial) SERIE=1; shift ;;
         --update-core) ACTUALIZAR_CORE=1; shift ;;
         --stop) ACCION="parar"; shift ;;
@@ -136,10 +140,17 @@ for d in $DATABASES; do
     esac
 done
 
-# Lee plugins.txt: una ruta por línea, sin líneas vacías ni comentarios (#).
 RUTAS=()
 NOMBRES=()
 PRUEBAS=()
+EXTRAS=()
+EXTRA_RUTAS=()
+EXTRA_NOMBRES=()
+
+# Con --test-core se prueba el propio core (su suite de tests) y plugins.txt no se usa.
+if [ "$TEST_CORE" -eq 0 ]; then
+
+# Lee plugins.txt: una ruta por línea, sin líneas vacías ni comentarios (#).
 while IFS= read -r linea || [ -n "$linea" ]; do
     linea="${linea%$'\r'}"
     linea="${linea#"${linea%%[![:space:]]*}"}"
@@ -160,9 +171,6 @@ done < plugins.txt
 # Cada una se prueba en una pasada aparte, con solo los plugins de su lista. Los plugins de la lista
 # que no estén en plugins.txt se buscan en la misma carpeta que el plugin (sus "hermanos") y solo se
 # usan en esa pasada.
-EXTRAS=()
-EXTRA_RUTAS=()
-EXTRA_NOMBRES=()
 for i in "${!RUTAS[@]}"; do
     for carpeta in "${RUTAS[$i]}"/Test/*/; do
         [ -f "${carpeta}install-plugins.txt" ] || continue
@@ -184,6 +192,8 @@ done
 
 [ ${#PRUEBAS[@]} -gt 0 ] || [ ${#EXTRAS[@]} -gt 0 ] || fallar "ningún plugin de plugins.txt tiene la carpeta Test/main con tests."
 
+fi
+
 if [ -n "$FS_CORE" ]; then
     FS_CORE="$(normalizar_ruta "$FS_CORE")"
     [ -f "$FS_CORE/Core/Kernel.php" ] || fallar "--core no apunta a un core de FacturaScripts: $FS_CORE"
@@ -192,12 +202,16 @@ fi
 PLUGINS_TXT="${NOMBRES[*]}"
 PRUEBAS_TXT="${PRUEBAS[*]}"
 EXTRAS_TXT="${EXTRAS[*]-}"
-echo "Plugins: $PLUGINS_TXT"
-echo "Con tests: $PRUEBAS_TXT"
-for extra in ${EXTRAS[@]+"${EXTRAS[@]}"}; do
-    IFS=: read -r e_plugin e_carpeta e_lista <<< "$extra"
-    echo "Tests extra: $e_plugin/Test/$e_carpeta (con ${e_lista//,/, })"
-done
+if [ "$TEST_CORE" -eq 1 ]; then
+    echo "Tests del core (${FS_CORE:-rama master de GitHub}), sin plugins"
+else
+    echo "Plugins: $PLUGINS_TXT"
+    echo "Con tests: $PRUEBAS_TXT"
+    for extra in ${EXTRAS[@]+"${EXTRAS[@]}"}; do
+        IFS=: read -r e_plugin e_carpeta e_lista <<< "$extra"
+        echo "Tests extra: $e_plugin/Test/$e_carpeta (con ${e_lista//,/, })"
+    done
+fi
 echo "PHP: $PHP_VERSIONS | BD: $DATABASES"
 
 # --- entorno Docker -------------------------------------------------------------------------------
@@ -280,33 +294,56 @@ probar_version() {
         return 0
     fi
 
+    # las bases de datos de esta versión de PHP van a la vez (cada una en su copia de trabajo),
+    # salvo con --serial; después juntamos los resultados en el orden pedido
+    local pids=""
     for db in $DATABASES; do
-        log="$LOGS/php${v}_${db}.log"
-        inicio=$SECONDS
-        local extra=()
-        [ -n "$FILTRO" ] && extra=(--filtro "$FILTRO")
-        dc exec -T "$svc" bash /opt/scripts/ejecutar.sh probar --db "$db" --plugins "$PLUGINS_TXT" --pruebas "$PRUEBAS_TXT" \
-            --extras "$EXTRAS_TXT" ${extra[@]+"${extra[@]}"} </dev/null > "$log" 2>&1
-        codigo=$?
-
-        resumen="$(grep '^RESUMEN\[' "$log" | sed -E 's/^RESUMEN\[([^]]*)\]: /\1: /' | paste -sd ';' - | sed 's/;/; /g')"
-        # con una sola carpeta de tests no hace falta decir de cuál es el resumen
-        if [ "$(grep -c '^RESUMEN\[' "$log")" -eq 1 ]; then
-            resumen="${resumen#*: }"
-        fi
-        if [ $codigo -eq 0 ] && grep -q '^RESUMEN\[' "$log" && ! grep '^RESUMEN\[' "$log" | grep -qv 'No tests executed'; then
-            # PHPUnit sale con 0 aunque no encuentre tests (p. ej. un --filter que no coincide con nada)
-            estado="SIN-TEST"
-        elif [ $codigo -eq 0 ]; then
-            estado="OK"
-        elif grep -q '^RESUMEN\[' "$log"; then
-            estado="FALLO"
+        if [ "$SERIE" -eq 1 ]; then
+            probar_bd "$v" "$svc" "$db"
         else
-            estado="ERROR"
-            resumen="$(grep -v '^[[:space:]]*$' "$log" | tail -n 1)"
+            probar_bd "$v" "$svc" "$db" &
+            pids="$pids $!"
         fi
-        echo "$db|$estado|$((SECONDS - inicio))|${resumen:-sin resumen (ver log)}" >> "$resultado"
     done
+    # shellcheck disable=SC2086
+    [ -z "$pids" ] || wait $pids
+    for db in $DATABASES; do
+        cat "$TMP/php${v}_$db.txt" >> "$resultado" 2>/dev/null \
+            || echo "$db|ERROR|0|sin resultado (ver $LOGS/php${v}_${db}.log)" >> "$resultado"
+    done
+}
+
+# Ejecuta los tests de una versión de PHP en una base de datos.
+# $1 versión de PHP, $2 servicio, $3 base de datos. Deja en $TMP/php<v>_<bd>.txt la línea
+# bd|estado|segundos|resumen
+probar_bd() {
+    local v="$1" svc="$2" db="$3" log inicio codigo resumen estado
+    log="$LOGS/php${v}_${db}.log"
+    inicio=$SECONDS
+    local extra=()
+    [ -n "$FILTRO" ] && extra=(--filtro "$FILTRO")
+    [ "$TEST_CORE" -eq 1 ] && extra+=(--core-tests)
+    dc exec -T "$svc" bash /opt/scripts/ejecutar.sh probar --db "$db" --plugins "$PLUGINS_TXT" --pruebas "$PRUEBAS_TXT" \
+        --extras "$EXTRAS_TXT" ${extra[@]+"${extra[@]}"} </dev/null > "$log" 2>&1
+    codigo=$?
+
+    resumen="$(grep '^RESUMEN\[' "$log" | sed -E 's/^RESUMEN\[([^]]*)\]: /\1: /' | paste -sd ';' - | sed 's/;/; /g')"
+    # con una sola carpeta de tests no hace falta decir de cuál es el resumen
+    if [ "$(grep -c '^RESUMEN\[' "$log")" -eq 1 ]; then
+        resumen="${resumen#*: }"
+    fi
+    if [ $codigo -eq 0 ] && grep -q '^RESUMEN\[' "$log" && ! grep '^RESUMEN\[' "$log" | grep -qv 'No tests executed'; then
+        # PHPUnit sale con 0 aunque no encuentre tests (p. ej. un --filter que no coincide con nada)
+        estado="SIN-TEST"
+    elif [ $codigo -eq 0 ]; then
+        estado="OK"
+    elif grep -q '^RESUMEN\[' "$log"; then
+        estado="FALLO"
+    else
+        estado="ERROR"
+        resumen="$(grep -v '^[[:space:]]*$' "$log" | tail -n 1)"
+    fi
+    echo "$db|$estado|$((SECONDS - inicio))|${resumen:-sin resumen (ver log)}" > "$TMP/php${v}_$db.txt"
 }
 
 # --- ejecución ------------------------------------------------------------------------------------
